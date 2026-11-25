@@ -98,7 +98,7 @@ def format_price_update(prices: dict) -> str:
     return "\n".join(lines)
 
 
-def format_daily_summary(prices: dict, top_news: list) -> str:
+def format_daily_summary(prices: dict, top_news: list, titles_uz: list = None) -> str:
     from price_fetcher import format_price_line, SYMBOLS
     now = datetime.now(timezone.utc).strftime("%d.%m.%Y %H:%M UTC")
     lines = [
@@ -114,7 +114,10 @@ def format_daily_summary(prices: dict, top_news: list) -> str:
     if top_news:
         for i, news in enumerate(top_news[:5], 1):
             icon = "🚨" if news.get("priority") == "HIGH" else "📌"
-            title_uz = _translate_to_uzbek(news.get('title', '')[:150])
+            if titles_uz and i - 1 < len(titles_uz):
+                title_uz = titles_uz[i - 1]
+            else:
+                title_uz = _translate_to_uzbek(news.get('title', '')[:150])
             lines.append(f"{icon} {i}. {title_uz}")
             lines.append(f"   📡 {news.get('source', '')}")
             lines.append("")

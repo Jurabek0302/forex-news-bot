@@ -3,6 +3,7 @@ import asyncio
 import logging
 import os
 import hashlib
+import html as _html
 from datetime import datetime, timezone
 
 from dotenv import load_dotenv
@@ -50,16 +51,33 @@ async def _translate_uz(text: str) -> str:
     """Matnni o'zbek tiliga tarjima qilish (async, bloklamas)."""
     if not text or len(text) < 5:
         return text
-    try:
-        def _do():
+
+    def _do():
+        # 1-usul: Google (tez, cheksiz — agar IP bloklanmagan bo'lsa)
+        try:
             url = "https://translate.googleapis.com/translate_a/single"
-            params = {
-                "client": "gtx", "sl": "en", "tl": "uz",
-                "dt": "t", "q": text[:450],
-            }
+            params = {"client": "gtx", "sl": "en", "tl": "uz", "dt": "t", "q": text[:450]}
             resp = _requests.get(url, params=params, timeout=5)
             data = resp.json()
-            return "".join(p[0] for p in data[0] if p[0])
+            out = "".join(p[0] for p in data[0] if p[0])
+            if out:
+                return out
+        except Exception:
+            pass
+        # 2-usul: MyMemory (datacenter uchun ishonchli)
+        try:
+            url = "https://api.mymemory.translated.net/get"
+            params = {"q": text[:450], "langpair": "en|uz"}
+            resp = _requests.get(url, params=params, timeout=5)
+            data = resp.json()
+            out = data.get("responseData", {}).get("translatedText", "")
+            if out:
+                return _html.unescape(out)
+        except Exception:
+            pass
+        return None
+
+    try:
         result = await asyncio.to_thread(_do)
         return result or _translate_to_uzbek(text)
     except Exception:
@@ -152,7 +170,8 @@ async def job_daily_summary(bot: Bot):
         prices = await asyncio.to_thread(fetch_prices, TD_API_KEY)
         items = await asyncio.to_thread(fetch_all_news)
         high_news = [n for n in items if n.get("priority") == "HIGH"][:5]
-        msg = format_daily_summary(prices, high_news)
+        titles_uz = [await _translate_uz(n.get("title", "")[:150]) for n in high_news]
+        msg = format_daily_summary(prices, high_news, titles_uz=titles_uz)
         await send_message_safe(bot, msg)
     except Exception as e:
         logger.error(f"Kunlik sharh yuborishda xato: {e}")
@@ -223,7 +242,8 @@ async def cmd_summary(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
     prices = await asyncio.to_thread(fetch_prices, TD_API_KEY)
     items = await asyncio.to_thread(fetch_all_news)
     high_news = [n for n in items if n.get("priority") == "HIGH"][:5]
-    msg = format_daily_summary(prices, high_news)
+    titles_uz = [await _translate_uz(n.get("title", "")[:150]) for n in high_news]
+    msg = format_daily_summary(prices, high_news, titles_uz=titles_uz)
     await update.message.reply_text(msg, disable_web_page_preview=True)
 
 
@@ -302,7 +322,8 @@ async def callback_handler(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
         prices = await asyncio.to_thread(fetch_prices, TD_API_KEY)
         items = await asyncio.to_thread(fetch_all_news)
         high_news = [n for n in items if n.get("priority") == "HIGH"][:5]
-        msg = format_daily_summary(prices, high_news)
+        titles_uz = [await _translate_uz(n.get("title", "")[:150]) for n in high_news]
+        msg = format_daily_summary(prices, high_news, titles_uz=titles_uz)
         await query.edit_message_text(msg, reply_markup=_main_keyboard())
 
     elif data == "status":
