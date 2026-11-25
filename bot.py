@@ -16,6 +16,7 @@ import requests as _requests
 
 from news_fetcher import fetch_all_news, fetch_newsapi
 from price_fetcher import fetch_prices, format_price_line, SYMBOLS
+from forex_factory import fetch_ff_calendar, format_ff_calendar
 from analyzer import (
     format_news_alert,
     format_price_update,
@@ -190,6 +191,9 @@ def _main_keyboard() -> InlineKeyboardMarkup:
             InlineKeyboardButton("🤖 Bot holati", callback_data="status"),
         ],
         [
+            InlineKeyboardButton("📅 Forex Factory kalendar", callback_data="ff"),
+        ],
+        [
             InlineKeyboardButton("❓ Yordam", callback_data="help"),
         ],
     ])
@@ -245,6 +249,14 @@ async def cmd_summary(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
     await update.message.reply_text(msg, disable_web_page_preview=True)
 
 
+async def cmd_calendar(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
+    """/kalendar — ForexFactory iqtisodiy kalendar."""
+    await update.message.reply_text("⏳ Forex Factory kalendari yuklanmoqda...")
+    events = await asyncio.to_thread(fetch_ff_calendar)
+    msg = format_ff_calendar(events)[:4000]
+    await update.message.reply_text(msg, disable_web_page_preview=True)
+
+
 async def cmd_status(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
     """/status — Bot holati va sozlamalari."""
     now = datetime.now(timezone.utc).strftime("%H:%M UTC, %d.%m.%Y")
@@ -280,6 +292,9 @@ async def cmd_help(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
         "• 📰 Muhim yangiliklar — doimiy kuzatuv\n"
         "• 📈 Narx yangilanishi — har 15 daqiqa\n"
         f"• 🌅 Kunlik sharh — har kuni {DAILY_TIME} UTC\n\n"
+        "📅 Forex Factory kalendar tugmasi:\n"
+        "Haftalik iqtisodiy hodisalar, foiz stavka qarorlari va\n"
+        "ularning bozorga ta'siri tahlili (/kalendar).\n\n"
         "Faqat malumot maqsadida. Moliyaviy maslahat emas."
     )
     if update.message:
@@ -324,6 +339,12 @@ async def callback_handler(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
         msg = format_daily_summary(prices, high_news, titles_uz=titles_uz)
         await query.edit_message_text(msg, reply_markup=_main_keyboard())
 
+    elif data == "ff":
+        await query.edit_message_text("⏳ Forex Factory kalendari yuklanmoqda...")
+        events = await asyncio.to_thread(fetch_ff_calendar)
+        msg = format_ff_calendar(events)[:4000]
+        await query.edit_message_text(msg, reply_markup=_main_keyboard())
+
     elif data == "status":
         now = datetime.now(timezone.utc).strftime("%H:%M UTC, %d.%m.%Y")
         td_status = "✅ Ulangan" if (TD_API_KEY and TD_API_KEY != "your_twelvedata_key_here") else "⚠️ Yoq (Yahoo fallback)"
@@ -356,6 +377,9 @@ async def callback_handler(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
             "• 📰 Muhim yangiliklar — doimiy kuzatuv\n"
             "• 📈 Narx yangilanishi — har 15 daqiqa\n"
             f"• 🌅 Kunlik sharh — har kuni {DAILY_TIME} UTC\n\n"
+            "📅 Forex Factory kalendar tugmasi:\n"
+            "Haftalik iqtisodiy hodisalar, foiz stavka qarorlari va\n"
+            "ularning bozorga ta'siri tahlili (/kalendar).\n\n"
             "Faqat malumot maqsadida. Moliyaviy maslahat emas."
         )
         await query.edit_message_text(text, reply_markup=_main_keyboard())
@@ -385,6 +409,8 @@ async def main():
     app.add_handler(CommandHandler("prices",  cmd_prices))
     app.add_handler(CommandHandler("news",    cmd_news))
     app.add_handler(CommandHandler("summary", cmd_summary))
+    app.add_handler(CommandHandler("calendar", cmd_calendar))
+    app.add_handler(CommandHandler("kalendar", cmd_calendar))
     app.add_handler(CommandHandler("status",  cmd_status))
     app.add_handler(CommandHandler("help",    cmd_help))
     app.add_handler(CallbackQueryHandler(callback_handler))
