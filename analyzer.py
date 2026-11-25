@@ -5,17 +5,32 @@ import logging
 logger = logging.getLogger(__name__)
 
 
+_UZ_TERMS = {
+    "gold": "oltin", "dollar": "dollar", "federal reserve": "Federal Rezerv",
+    "interest rate": "foiz stavkasi", "rate hike": "stavka oshirish",
+    "rate cut": "stavka kamaytirish", "inflation": "inflyatsiya",
+    "recession": "tanazzul", "war": "urush", "conflict": "mojarо",
+    "oil": "neft", "market": "bozor", "stock": "aksiya",
+    "economy": "iqtisodiyot", "bank": "bank", "trade": "savdo",
+    "gdp": "YaIM", "unemployment": "ishsizlik", "bond": "obligatsiya",
+    "rally": "oshish", "selloff": "tushish", "crash": "inqiroz",
+    "sanctions": "sanksiyalar", "tariff": "tarif", "china": "Xitoy",
+    "russia": "Rossiya", "ukraine": "Ukraina", "europe": "Yevropa",
+    "bullish": "o'sish", "bearish": "tushish", "safe haven": "xavfsiz aktiv",
+    "risk off": "xavfdan qochish", "risk on": "xavf olish",
+}
+
 def _translate_to_uzbek(text: str) -> str:
-    """Matnni o'zbek tiliga tarjima qilish."""
+    """Moliyaviy atamalarni o'zbek tiliga almashtirish."""
     if not text:
         return text
-    try:
-        from deep_translator import GoogleTranslator
-        translated = GoogleTranslator(source='auto', target='uz').translate(text[:500])
-        return translated or text
-    except Exception as e:
-        logger.debug(f"Tarjima xatosi: {e}")
-        return text
+    result = text
+    text_lower = text.lower()
+    for en, uz in _UZ_TERMS.items():
+        if en in text_lower:
+            import re
+            result = re.sub(re.escape(en), uz, result, flags=re.IGNORECASE)
+    return result
 
 
 def _impact_summary(impact: dict) -> str:

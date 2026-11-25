@@ -123,8 +123,6 @@ def fetch_all_news() -> list[dict]:
     result = []
     for item in all_items:
         priority = _priority_level(item["text"])
-        if priority == "LOW":
-            continue  # Past muhimlikdagilarni o'tkazib yuborish
         item["priority"] = priority
         item["impact"] = _score_impact(item["text"])
         result.append(item)
@@ -154,8 +152,6 @@ def fetch_newsapi(api_key: str) -> list[dict]:
         for a in articles:
             text = f"{a.get('title','')} {a.get('description','')}"
             priority = _priority_level(text)
-            if priority == "LOW":
-                continue
             result.append({
                 "source": a.get("source", {}).get("name", "NewsAPI"),
                 "title": a.get("title", ""),

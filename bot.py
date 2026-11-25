@@ -387,7 +387,7 @@ async def main():
 
     async with app:
         await app.start()
-        await app.updater.start_polling()
+        await app.updater.start_polling(drop_pending_updates=True)
 
         try:
             await asyncio.Event().wait()  # Cheksiz kutish
