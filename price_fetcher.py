@@ -6,10 +6,10 @@ from typing import Optional
 logger = logging.getLogger(__name__)
 
 SYMBOLS = {
-    "XAUUSD": {"name": "Oltin/Dollar", "emoji": "рџҐ‡"},
-    "DXY":    {"name": "Dollar Indeksi", "emoji": "рџ’µ"},
-    "NAS100": {"name": "Nasdaq 100", "emoji": "рџ“Љ"},
-    "EURUSD": {"name": "Euro/Dollar", "emoji": "рџ‡Єрџ‡є"},
+    “XAUUSD”: {“name”: “Oltin/Dollar”, “emoji”: “🥇”},
+    “DXY”:    {“name”: “Dollar Indeksi”, “emoji”: “💵”},
+    “NAS100”: {“name”: “Nasdaq 100”, “emoji”: “📊”},
+    “EURUSD”: {“name”: “Euro/Dollar”, “emoji”: “🇪🇺”},
 }
 
 # Twelvedata orqali narx olish
@@ -93,9 +93,9 @@ def fetch_prices(twelvedata_key: str = "") -> dict:
 
 def format_price_line(sym: str, data: Optional[dict]) -> str:
     """Narx qatorini formatlash."""
-    info = SYMBOLS.get(sym, {"name": sym, "emoji": "рџ“€"})
+    info = SYMBOLS.get(sym, {“name”: sym, “emoji”: “📌”})
     if not data:
-        return f"{info['emoji']} {sym} вЂ” ma'lumot yo'q"
+        return f”{info['emoji']} {sym} — ma'lumot yo'q”
 
     price = data["price"]
     change = data["change"]
@@ -111,7 +111,7 @@ def format_price_line(sym: str, data: Optional[dict]) -> str:
     else:
         price_str = f"{price:.5f}"
 
-    arrow = "рџ”є" if change >= 0 else "рџ”»"
+    arrow = “📈” if change >= 0 else “📉”
     sign = "+" if change >= 0 else ""
 
     return (

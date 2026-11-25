@@ -6,8 +6,8 @@ import hashlib
 from datetime import datetime, timezone
 
 from dotenv import load_dotenv
-from telegram import Bot, Update
-from telegram.ext import Application, CommandHandler, ContextTypes
+from telegram import Bot, Update, InlineKeyboardButton, InlineKeyboardMarkup
+from telegram.ext import Application, CommandHandler, CallbackQueryHandler, ContextTypes
 from telegram.constants import ParseMode
 from apscheduler.schedulers.asyncio import AsyncIOScheduler
 
@@ -119,22 +119,35 @@ async def job_daily_summary(bot: Bot):
 
 # ─── Telegram komandalar ──────────────────────────────────────────────────────
 
+def _main_keyboard() -> InlineKeyboardMarkup:
+    """Asosiy tugmalar paneli."""
+    return InlineKeyboardMarkup([
+        [
+            InlineKeyboardButton("📈 Narxlar", callback_data="prices"),
+            InlineKeyboardButton("📰 Yangiliklar", callback_data="news"),
+        ],
+        [
+            InlineKeyboardButton("🌅 Bozor sharhi", callback_data="summary"),
+            InlineKeyboardButton("🤖 Bot holati", callback_data="status"),
+        ],
+        [
+            InlineKeyboardButton("❓ Yordam", callback_data="help"),
+        ],
+    ])
+
+
 async def cmd_start(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
     """/start - Chat ID va salomlashish."""
     chat_id = update.effective_chat.id
     username = update.effective_user.username or "foydalanuvchi"
 
-    # .env ga yozish uchun ID ni ko'rsatish
     await update.message.reply_text(
         f"👋 Salom, @{username}!\n\n"
         f"🤖 Forex Tahlil Boti ishga tushdi!\n\n"
-        f"Chat ID: {chat_id}\n\n"
-        f"Komandalar:\n"
-        f"/prices — Joriy narxlar\n"
-        f"/news — Oxirgi yangiliklar\n"
-        f"/summary — Bozor sharhi\n"
-        f"/status — Bot holati\n"
-        f"/help — Yordam",
+        f"Chat ID: `{chat_id}`\n\n"
+        f"Quyidagi tugmalardan foydalaning 👇",
+        parse_mode=ParseMode.MARKDOWN,
+        reply_markup=_main_keyboard(),
     )
 
 
@@ -195,7 +208,7 @@ async def cmd_status(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
 
 async def cmd_help(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
     """/help — Yordam."""
-    await update.message.reply_text(
+    text = (
         "📖 YORDAM\n\n"
         "Bu bot quyidagi bozorlarni kuzatadi:\n"
         "🥇 XAUUSD — Oltin/Dollar\n"
@@ -207,13 +220,83 @@ async def cmd_help(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
         "• 📰 Muhim yangiliklar — doimiy kuzatuv\n"
         "• 📈 Narx yangilanishi — har 15 daqiqa\n"
         f"• 🌅 Kunlik sharh — har kuni {DAILY_TIME} UTC\n\n"
-        "Komandalar:\n"
-        "/prices — Joriy narxlar\n"
-        "/news — Oxirgi yangiliklar\n"
-        "/summary — Toliq sharh\n"
-        "/status — Bot holati\n\n"
-        "Faqat malumot maqsadida. Moliyaviy maslahat emas.",
+        "Faqat malumot maqsadida. Moliyaviy maslahat emas."
     )
+    if update.message:
+        await update.message.reply_text(text, reply_markup=_main_keyboard())
+    elif update.callback_query:
+        await update.callback_query.edit_message_text(text, reply_markup=_main_keyboard())
+
+
+async def callback_handler(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
+    """Tugma bosilganda ishlaydi."""
+    query = update.callback_query
+    await query.answer()
+
+    data = query.data
+
+    if data == "prices":
+        await query.edit_message_text("⏳ Narxlar olinmoqda...")
+        prices = fetch_prices(TD_API_KEY)
+        msg = format_price_update(prices)
+        ctx_msg = format_market_context()
+        await query.edit_message_text(msg + "\n\n" + ctx_msg, reply_markup=_main_keyboard())
+
+    elif data == "news":
+        await query.edit_message_text("⏳ Yangiliklar izlanmoqda...")
+        items = fetch_all_news()
+        if not items:
+            await query.edit_message_text("ℹ️ Hozircha muhim yangilik yoq.", reply_markup=_main_keyboard())
+            return
+        for item in items[:3]:
+            msg = format_news_alert(item)
+            await query.message.reply_text(msg, disable_web_page_preview=True)
+            await asyncio.sleep(1)
+        await query.message.reply_text("📋 Asosiy menyu:", reply_markup=_main_keyboard())
+
+    elif data == "summary":
+        await query.edit_message_text("⏳ Sharh tayyorlanmoqda...")
+        prices = fetch_prices(TD_API_KEY)
+        items = fetch_all_news()
+        high_news = [n for n in items if n.get("priority") == "HIGH"][:5]
+        msg = format_daily_summary(prices, high_news)
+        await query.edit_message_text(msg, reply_markup=_main_keyboard())
+
+    elif data == "status":
+        now = datetime.now(timezone.utc).strftime("%H:%M UTC, %d.%m.%Y")
+        td_status = "✅ Ulangan" if (TD_API_KEY and TD_API_KEY != "your_twelvedata_key_here") else "⚠️ Yoq (Yahoo fallback)"
+        news_status = "✅ Ulangan" if (NEWS_API_KEY and NEWS_API_KEY != "your_newsapi_key_here") else "⚠️ Yoq (RSS only)"
+        text = (
+            f"🤖 BOT HOLATI\n"
+            f"⏰ Vaqt: {now}\n\n"
+            f"API holatlar:\n"
+            f"• TwelveData: {td_status}\n"
+            f"• NewsAPI: {news_status}\n\n"
+            f"Sozlamalar:\n"
+            f"• Yangilik tekshirish: har {CHECK_INTERVAL//60} daqiqa\n"
+            f"• Kunlik sharh: {DAILY_TIME} UTC\n"
+            f"• Korilgan yangiliklar: {len(_seen_news)} ta\n\n"
+            f"Kuzatiladigan juftliklar:\n"
+            f"🥇 XAUUSD | 💵 DXY | 📊 NAS100 | 🇪🇺 EURUSD"
+        )
+        await query.edit_message_text(text, reply_markup=_main_keyboard())
+
+    elif data == "help":
+        text = (
+            "📖 YORDAM\n\n"
+            "Bu bot quyidagi bozorlarni kuzatadi:\n"
+            "🥇 XAUUSD — Oltin/Dollar\n"
+            "💵 DXY — Dollar Indeksi\n"
+            "📊 NAS100 — Nasdaq 100\n"
+            "🇪🇺 EURUSD — Euro/Dollar\n\n"
+            "Avtomatik xabarlar:\n"
+            "• 🚨 Tezkor yangiliklar — darhol\n"
+            "• 📰 Muhim yangiliklar — doimiy kuzatuv\n"
+            "• 📈 Narx yangilanishi — har 15 daqiqa\n"
+            f"• 🌅 Kunlik sharh — har kuni {DAILY_TIME} UTC\n\n"
+            "Faqat malumot maqsadida. Moliyaviy maslahat emas."
+        )
+        await query.edit_message_text(text, reply_markup=_main_keyboard())
 
 
 # ─── Asosiy ishga tushirish ───────────────────────────────────────────────────
@@ -242,6 +325,7 @@ async def main():
     app.add_handler(CommandHandler("summary", cmd_summary))
     app.add_handler(CommandHandler("status",  cmd_status))
     app.add_handler(CommandHandler("help",    cmd_help))
+    app.add_handler(CallbackQueryHandler(callback_handler))
 
     bot = app.bot
 
