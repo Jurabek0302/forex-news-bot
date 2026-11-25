@@ -99,7 +99,6 @@ async def send_message_safe(bot: Bot, text: str, disable_preview: bool = True):
         await bot.send_message(
             chat_id=CHAT_ID,
             text=text,
-            parse_mode=ParseMode.MARKDOWN,
             disable_web_page_preview=disable_preview,
         )
     except Exception as e:
@@ -204,9 +203,8 @@ async def cmd_start(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
     await update.message.reply_text(
         f"👋 Salom, @{username}!\n\n"
         f"🤖 Forex Tahlil Boti ishga tushdi!\n\n"
-        f"Chat ID: `{chat_id}`\n\n"
+        f"Chat ID: {chat_id}\n\n"
         f"Quyidagi tugmalardan foydalaning 👇",
-        parse_mode=ParseMode.MARKDOWN,
         reply_markup=_main_keyboard(),
     )
 
@@ -433,7 +431,7 @@ async def main():
         try:
             prices = await asyncio.to_thread(fetch_prices, TD_API_KEY)
             startup_msg = (
-                "🤖 **BOT ISHGA TUSHDI!**\n\n"
+                "🤖 BOT ISHGA TUSHDI!\n\n"
                 + format_price_update(prices)
                 + "\n\n"
                 + format_market_context()

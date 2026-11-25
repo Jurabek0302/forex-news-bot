@@ -115,6 +115,6 @@ def format_price_line(sym: str, data: Optional[dict]) -> str:
     sign = "+" if change >= 0 else ""
 
     return (
-        f"{info['emoji']} {sym} `{price_str}`  "
+        f"{info['emoji']} {sym}  {price_str}  "
         f"{arrow} {sign}{change_pct:.2f}%"
     )
