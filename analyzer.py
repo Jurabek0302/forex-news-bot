@@ -64,13 +64,6 @@ def _impact_summary(impact: dict) -> str:
     return "\n".join(lines) if lines else "⚪ Tasir aniqlanmadi"
 
 
-def xauusd_affects(impact: dict) -> bool:
-    """Yangilik XAUUSD (oltin) ga ta'sir qiladimi? (bullish/bearish signal bormi)"""
-    bull = impact.get("xauusd_bullish", 0) + impact.get("dxy_bearish", 0)
-    bear = impact.get("xauusd_bearish", 0) + impact.get("dxy_bullish", 0)
-    return bull != bear
-
-
 def _xauusd_analysis(impact: dict) -> tuple:
     """Oltin (XAUUSD) ga ta'sir tahlili va xulosa.
 
