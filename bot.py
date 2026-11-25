@@ -11,6 +11,8 @@ from telegram.ext import Application, CommandHandler, CallbackQueryHandler, Cont
 from telegram.constants import ParseMode
 from apscheduler.schedulers.asyncio import AsyncIOScheduler
 
+import requests as _requests
+
 from news_fetcher import fetch_all_news, fetch_newsapi
 from price_fetcher import fetch_prices, format_price_line, SYMBOLS
 from analyzer import (
@@ -18,6 +20,7 @@ from analyzer import (
     format_price_update,
     format_daily_summary,
     format_market_context,
+    _translate_to_uzbek,
 )
 
 load_dotenv()
@@ -41,6 +44,26 @@ DAILY_TIME    = os.getenv("DAILY_SUMMARY_TIME", "05:00")
 
 # Ko'rilgan yangiliklar - takrorlanmaslik uchun
 _seen_news: set[str] = set()
+
+
+async def _translate_uz(text: str) -> str:
+    """Matnni o'zbek tiliga tarjima qilish (async, bloklamas)."""
+    if not text or len(text) < 5:
+        return text
+    try:
+        def _do():
+            url = "https://translate.googleapis.com/translate_a/single"
+            params = {
+                "client": "gtx", "sl": "en", "tl": "uz",
+                "dt": "t", "q": text[:450],
+            }
+            resp = _requests.get(url, params=params, timeout=5)
+            data = resp.json()
+            return "".join(p[0] for p in data[0] if p[0])
+        result = await asyncio.to_thread(_do)
+        return result or _translate_to_uzbek(text)
+    except Exception:
+        return _translate_to_uzbek(text)
 
 
 def _news_hash(item: dict) -> str:
@@ -72,27 +95,39 @@ async def job_check_news(bot: Bot):
     global _seen_news
     logger.info("Yangiliklar tekshirilmoqda...")
 
-    items = fetch_all_news()
-    if NEWS_API_KEY:
-        items = fetch_newsapi(NEWS_API_KEY) + items
+    try:
+        items = await asyncio.to_thread(fetch_all_news)
+        if NEWS_API_KEY:
+            extra = await asyncio.to_thread(fetch_newsapi, NEWS_API_KEY)
+            items = extra + items
+    except Exception as e:
+        logger.error(f"Yangilik olishda xato: {e}")
+        return
 
     new_count = 0
     for item in items:
+        if new_count >= 15:
+            _seen_news.add(_news_hash(item))
+            continue
+
         h = _news_hash(item)
         if h in _seen_news:
             continue
         _seen_news.add(h)
 
-        # Ko'rish to'plami 500 dan oshmasin
         if len(_seen_news) > 500:
             _seen_news = set(list(_seen_news)[-300:])
 
-        msg = format_news_alert(item)
-        await send_message_safe(bot, msg)
-        new_count += 1
-
-        # Ketma-ket xabarlar orasida pauza
-        await asyncio.sleep(2)
+        try:
+            title_uz = await _translate_uz(item.get("title", ""))
+            raw_summary = item.get("summary", "")
+            summary_uz = await _translate_uz(raw_summary) if raw_summary else ""
+            msg = format_news_alert(item, title_uz=title_uz, summary_uz=summary_uz)
+            await send_message_safe(bot, msg)
+            new_count += 1
+            await asyncio.sleep(3)
+        except Exception as e:
+            logger.error(f"Yangilik yuborishda xato: {e}")
 
     if new_count:
         logger.info(f"{new_count} ta yangi yangilik yuborildi")
@@ -102,19 +137,25 @@ async def job_check_news(bot: Bot):
 
 async def job_price_update(bot: Bot):
     """Har 15 daqiqada narx yangilanishi."""
-    prices = fetch_prices(TD_API_KEY)
-    msg = format_price_update(prices)
-    ctx = format_market_context()
-    await send_message_safe(bot, msg + "\n\n" + ctx)
+    try:
+        prices = await asyncio.to_thread(fetch_prices, TD_API_KEY)
+        msg = format_price_update(prices)
+        ctx = format_market_context()
+        await send_message_safe(bot, msg + "\n\n" + ctx)
+    except Exception as e:
+        logger.error(f"Narx yangilanishida xato: {e}")
 
 
 async def job_daily_summary(bot: Bot):
     """Kunlik bozor sharhi."""
-    prices = fetch_prices(TD_API_KEY)
-    items = fetch_all_news()
-    high_news = [n for n in items if n.get("priority") == "HIGH"][:5]
-    msg = format_daily_summary(prices, high_news)
-    await send_message_safe(bot, msg)
+    try:
+        prices = await asyncio.to_thread(fetch_prices, TD_API_KEY)
+        items = await asyncio.to_thread(fetch_all_news)
+        high_news = [n for n in items if n.get("priority") == "HIGH"][:5]
+        msg = format_daily_summary(prices, high_news)
+        await send_message_safe(bot, msg)
+    except Exception as e:
+        logger.error(f"Kunlik sharh yuborishda xato: {e}")
 
 
 # ─── Telegram komandalar ──────────────────────────────────────────────────────
@@ -154,7 +195,7 @@ async def cmd_start(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
 async def cmd_prices(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
     """/prices — Joriy narxlar."""
     await update.message.reply_text("⏳ Narxlar olinmoqda...")
-    prices = fetch_prices(TD_API_KEY)
+    prices = await asyncio.to_thread(fetch_prices, TD_API_KEY)
     msg = format_price_update(prices)
     ctx_msg = format_market_context()
     await update.message.reply_text(msg + "\n\n" + ctx_msg)
@@ -163,14 +204,15 @@ async def cmd_prices(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
 async def cmd_news(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
     """/news — So'nggi muhim yangiliklar."""
     await update.message.reply_text("⏳ Yangiliklar izlanmoqda...")
-    items = fetch_all_news()
+    items = await asyncio.to_thread(fetch_all_news)
 
     if not items:
         await update.message.reply_text("ℹ️ Hozircha muhim yangilik yoq.")
         return
 
     for item in items[:3]:
-        msg = format_news_alert(item)
+        title_uz = await _translate_uz(item.get("title", ""))
+        msg = format_news_alert(item, title_uz=title_uz)
         await update.message.reply_text(msg, disable_web_page_preview=True)
         await asyncio.sleep(1)
 
@@ -178,8 +220,8 @@ async def cmd_news(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
 async def cmd_summary(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
     """/summary — To'liq bozor sharhi."""
     await update.message.reply_text("⏳ Sharh tayyorlanmoqda...")
-    prices = fetch_prices(TD_API_KEY)
-    items = fetch_all_news()
+    prices = await asyncio.to_thread(fetch_prices, TD_API_KEY)
+    items = await asyncio.to_thread(fetch_all_news)
     high_news = [n for n in items if n.get("priority") == "HIGH"][:5]
     msg = format_daily_summary(prices, high_news)
     await update.message.reply_text(msg, disable_web_page_preview=True)
@@ -237,27 +279,28 @@ async def callback_handler(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
 
     if data == "prices":
         await query.edit_message_text("⏳ Narxlar olinmoqda...")
-        prices = fetch_prices(TD_API_KEY)
+        prices = await asyncio.to_thread(fetch_prices, TD_API_KEY)
         msg = format_price_update(prices)
         ctx_msg = format_market_context()
         await query.edit_message_text(msg + "\n\n" + ctx_msg, reply_markup=_main_keyboard())
 
     elif data == "news":
         await query.edit_message_text("⏳ Yangiliklar izlanmoqda...")
-        items = fetch_all_news()
+        items = await asyncio.to_thread(fetch_all_news)
         if not items:
             await query.edit_message_text("ℹ️ Hozircha muhim yangilik yoq.", reply_markup=_main_keyboard())
             return
         for item in items[:3]:
-            msg = format_news_alert(item)
+            title_uz = await _translate_uz(item.get("title", ""))
+            msg = format_news_alert(item, title_uz=title_uz)
             await query.message.reply_text(msg, disable_web_page_preview=True)
             await asyncio.sleep(1)
         await query.message.reply_text("📋 Asosiy menyu:", reply_markup=_main_keyboard())
 
     elif data == "summary":
         await query.edit_message_text("⏳ Sharh tayyorlanmoqda...")
-        prices = fetch_prices(TD_API_KEY)
-        items = fetch_all_news()
+        prices = await asyncio.to_thread(fetch_prices, TD_API_KEY)
+        items = await asyncio.to_thread(fetch_all_news)
         high_news = [n for n in items if n.get("priority") == "HIGH"][:5]
         msg = format_daily_summary(prices, high_news)
         await query.edit_message_text(msg, reply_markup=_main_keyboard())
@@ -367,7 +410,7 @@ async def main():
     # Ishga tushish xabari
     if CHAT_ID and CHAT_ID != "your_chat_id_here":
         try:
-            prices = fetch_prices(TD_API_KEY)
+            prices = await asyncio.to_thread(fetch_prices, TD_API_KEY)
             startup_msg = (
                 "🤖 **BOT ISHGA TUSHDI!**\n\n"
                 + format_price_update(prices)
@@ -391,7 +434,7 @@ async def main():
 
         try:
             await asyncio.Event().wait()  # Cheksiz kutish
-        except (KeyboardInterrupt, SystemExit):
+        except (KeyboardInterrupt, SystemExit, asyncio.CancelledError):
             logger.info("Bot to'xtatilmoqda...")
         finally:
             scheduler.shutdown()

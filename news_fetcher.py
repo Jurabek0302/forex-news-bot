@@ -92,7 +92,8 @@ def _priority_level(text: str) -> str:
 def _fetch_rss(url: str, name: str) -> list[dict]:
     """RSS feedddan yangiliklar olish."""
     try:
-        feed = feedparser.parse(url)
+        resp = requests.get(url, timeout=8, headers={"User-Agent": "Mozilla/5.0"})
+        feed = feedparser.parse(resp.text)
         items = []
         for entry in feed.entries[:5]:  # Har manbadan oxirgi 5 ta
             title = getattr(entry, "title", "")

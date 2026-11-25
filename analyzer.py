@@ -64,7 +64,7 @@ def _impact_summary(impact: dict) -> str:
     return "\n".join(lines) if lines else "⚪ Tasir aniqlanmadi"
 
 
-def format_news_alert(news_item: dict) -> str:
+def format_news_alert(news_item: dict, title_uz: str = None, summary_uz: str = None) -> str:
     priority = news_item.get("priority", "MEDIUM")
     header = "🚨 TEZKOR XABAR" if priority == "HIGH" else "📰 BOZOR YANGILIGI"
     source = news_item.get("source", "Noma'lum")
@@ -75,9 +75,10 @@ def format_news_alert(news_item: dict) -> str:
     now = datetime.now(timezone.utc).strftime("%H:%M UTC")
     impact_text = _impact_summary(impact)
 
-    # O'zbek tiliga tarjima
-    title_uz = _translate_to_uzbek(title)
-    summary_uz = _translate_to_uzbek(summary) if summary and summary != title else ""
+    if title_uz is None:
+        title_uz = _translate_to_uzbek(title)
+    if summary_uz is None:
+        summary_uz = _translate_to_uzbek(summary) if summary and summary != title else ""
 
     msg = f"{header}\n⏰ {now} | 📡 {source}\n\n📌 {title_uz}"
     if summary_uz:
