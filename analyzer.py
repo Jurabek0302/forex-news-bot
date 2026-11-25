@@ -1,5 +1,21 @@
 ﻿"""Yangilik ta'sirini tahlil qilish va xabar shakllantirish."""
 from datetime import datetime, timezone
+import logging
+
+logger = logging.getLogger(__name__)
+
+
+def _translate_to_uzbek(text: str) -> str:
+    """Matnni o'zbek tiliga tarjima qilish."""
+    if not text:
+        return text
+    try:
+        from deep_translator import GoogleTranslator
+        translated = GoogleTranslator(source='auto', target='uz').translate(text[:500])
+        return translated or text
+    except Exception as e:
+        logger.debug(f"Tarjima xatosi: {e}")
+        return text
 
 
 def _impact_summary(impact: dict) -> str:
@@ -44,9 +60,13 @@ def format_news_alert(news_item: dict) -> str:
     now = datetime.now(timezone.utc).strftime("%H:%M UTC")
     impact_text = _impact_summary(impact)
 
-    msg = f"{header}\n⏰ {now} | 📡 {source}\n\n📌 {title}"
-    if summary and summary != title:
-        msg += f"\n\n{summary[:200]}..."
+    # O'zbek tiliga tarjima
+    title_uz = _translate_to_uzbek(title)
+    summary_uz = _translate_to_uzbek(summary) if summary and summary != title else ""
+
+    msg = f"{header}\n⏰ {now} | 📡 {source}\n\n📌 {title_uz}"
+    if summary_uz:
+        msg += f"\n\n{summary_uz[:300]}"
     msg += f"\n\n---\n📊 BOZORGA TASIRI:\n{impact_text}\n---"
     if link:
         msg += f"\n🔗 {link}"
@@ -78,7 +98,8 @@ def format_daily_summary(prices: dict, top_news: list) -> str:
     if top_news:
         for i, news in enumerate(top_news[:5], 1):
             icon = "🚨" if news.get("priority") == "HIGH" else "📌"
-            lines.append(f"{icon} {i}. {news.get('title', '')[:100]}")
+            title_uz = _translate_to_uzbek(news.get('title', '')[:150])
+            lines.append(f"{icon} {i}. {title_uz}")
             lines.append(f"   📡 {news.get('source', '')}")
             lines.append("")
     else:
