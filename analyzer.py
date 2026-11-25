@@ -64,6 +64,47 @@ def _impact_summary(impact: dict) -> str:
     return "\n".join(lines) if lines else "⚪ Tasir aniqlanmadi"
 
 
+def _xauusd_analysis(impact: dict) -> tuple:
+    """Oltin (XAUUSD) ga ta'sir tahlili va xulosa.
+
+    Oltin: dollar kuchaysa/stavka oshsa tushadi; dollar zaiflashsa,
+    risk-off (urush/inqiroz) bo'lsa ko'tariladi.
+    """
+    xau_bull = impact.get("xauusd_bullish", 0)
+    xau_bear = impact.get("xauusd_bearish", 0)
+    dxy_bull = impact.get("dxy_bullish", 0)   # kuchli dollar -> oltin tushadi
+    dxy_bear = impact.get("dxy_bearish", 0)   # zaif dollar  -> oltin ko'tariladi
+
+    bull = xau_bull + dxy_bear
+    bear = xau_bear + dxy_bull
+
+    if bull > bear:
+        reasons = []
+        if xau_bull:
+            reasons.append("xavfsiz aktivga talab / geosiyosiy keskinlik")
+        if dxy_bear:
+            reasons.append("dollarning zaiflashishi")
+        detail = "🥇 Oltinga ta'siri: IJOBIY — ko'tarilishi mumkin."
+        if reasons:
+            detail += "\nSabab: " + ", ".join(reasons[:2]) + "."
+        xulosa = "📝 XULOSA: Oltin (XAUUSD) ko'tarilishi ehtimoli yuqori. 🟢"
+    elif bear > bull:
+        reasons = []
+        if xau_bear:
+            reasons.append("risk-on kayfiyat / tinchlik signali")
+        if dxy_bull:
+            reasons.append("dollarning kuchayishi / hawkish Fed")
+        detail = "🥇 Oltinga ta'siri: SALBIY — tushishi mumkin."
+        if reasons:
+            detail += "\nSabab: " + ", ".join(reasons[:2]) + "."
+        xulosa = "📝 XULOSA: Oltin (XAUUSD) tushishi ehtimoli yuqori. 🔴"
+    else:
+        detail = "🥇 Oltinga ta'siri: Neytral — kuchli signal yo'q."
+        xulosa = "📝 XULOSA: Oltin (XAUUSD) uchun sezilarli harakat kutilmaydi. ⚪"
+
+    return detail, xulosa
+
+
 def format_news_alert(news_item: dict, title_uz: str = None, summary_uz: str = None) -> str:
     priority = news_item.get("priority", "MEDIUM")
     header = "🚨 TEZKOR XABAR" if priority == "HIGH" else "📰 BOZOR YANGILIGI"
@@ -74,6 +115,7 @@ def format_news_alert(news_item: dict, title_uz: str = None, summary_uz: str = N
     impact = news_item.get("impact", {})
     now = datetime.now(timezone.utc).strftime("%H:%M UTC")
     impact_text = _impact_summary(impact)
+    xau_detail, xulosa = _xauusd_analysis(impact)
 
     if title_uz is None:
         title_uz = _translate_to_uzbek(title)
@@ -83,7 +125,7 @@ def format_news_alert(news_item: dict, title_uz: str = None, summary_uz: str = N
     msg = f"{header}\n⏰ {now} | 📡 {source}\n\n📌 {title_uz}"
     if summary_uz:
         msg += f"\n\n{summary_uz[:300]}"
-    msg += f"\n\n---\n📊 BOZORGA TASIRI:\n{impact_text}\n---"
+    msg += f"\n\n---\n📊 BOZORGA TA'SIRI:\n{impact_text}\n\n{xau_detail}\n\n{xulosa}\n---"
     if link:
         msg += f"\n🔗 {link}"
     return msg
