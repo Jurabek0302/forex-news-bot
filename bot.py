@@ -23,6 +23,7 @@ from analyzer import (
     format_daily_summary,
     format_market_context,
     _translate_to_uzbek,
+    xauusd_affects,
 )
 
 load_dotenv()
@@ -121,6 +122,12 @@ async def job_check_news(bot: Bot):
     except Exception as e:
         logger.error(f"Yangilik olishda xato: {e}")
         return
+
+    # Filtr: faqat tezkor (HIGH) yoki XAUUSD ga ta'sir qiladigan yangiliklar
+    items = [
+        it for it in items
+        if it.get("priority") == "HIGH" or xauusd_affects(it.get("impact", {}))
+    ]
 
     new_count = 0
     for item in items:
